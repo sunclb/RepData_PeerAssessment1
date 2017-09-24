@@ -5,21 +5,104 @@ output:
     keep_md: true
 ---
 
+## Loading library
+```{r}
+library(data.table)
+library(dplyr,warn.conflicts = FALSE)
+library(ggplot2)
+library(lubridate,warn.conflicts = FALSE)
+library(magrittr)
+library(ggpubr)
+```
+
 
 ## Loading and preprocessing the data
+```{r}
+dt<-fread(unzip("activity.zip"))
+dt[,date:=ymd(date)]
 
-
-
+```
 ## What is mean total number of steps taken per day?
+```{r}
+dtsum<-dt[,.(mean=mean(steps,na.rm = TRUE),median=as.double(median(steps,na.rm = TRUE)),total=sum(steps,na.rm = TRUE),maxinterval=interval[which.max(steps)]),by=date]
+dtsum
+qplot(x=total,data=dtsum,geom="histogram")
+```
 
-
+mean and median of total number of steps taken per day are:
+```{r}
+dtsum[,c(mean(total),median(total))]
+```
 
 ## What is the average daily activity pattern?
+```{r}
+dtsumbyinterval<-dt[,.(mean=mean(steps,na.rm = TRUE)),by=interval]
+qplot(x=interval,y=mean,data=dtsumbyinterval,geom="line")
 
+```
 
+## What is the maximum number of steps interval?
+```{r}
+dtsumbyinterval[which.max(mean),interval]
+```
 
 ## Imputing missing values
+Total number of NAs
+```{r}
+summary(dt)
+```
 
+Missing value pattern
+```{r}
+dt[,.(N=.N,noNA=sum(is.na(steps))),by=date] 
+
+```
+ We can know NA is due to no record on particular day rather than random NA. So it is better to fill NA with mean of the 5 minutes interval
+```{r}
+dtimp<-dt
+NAintervallist<-dtimp[is.na(steps),interval]
+fillvalue<-sapply(NAintervallist,function(x){
+  return(dtsumbyinterval[interval==x,mean])
+})
+class(dtimp$steps)<-"double"
+dtimp[is.na(steps),steps:=fillvalue]
+
+dtimpsum<-dtimp[,.(mean=mean(steps),median=as.double(median(steps,na.rm = TRUE))
+                   ,total=sum(steps),maxinterval=interval[which.max(steps)]),by=date]
+dtimpsumbyinterval<-dtimp[,.(mean=mean(steps)),by=interval]
+```
+
+After imputing all NAs, the histogram of total steps per day is as below:
+```{r}
+qplot(x=total,data=dtimpsum,geom="histogram")
+print("mean and median of total number of steps taken per day are")
+dtimpsum[,c(mean(total),median(total))]
+```
+
+The mean and median difference before and after imputing NAs are:
+```{r}
+dif<-dtimpsum[,c(mean(total),median(total))]-dtsum[,c(mean(total),median(total))]
+dif
+if(dif>0){
+  print("The result estimated total number of steps per day will increase")
+  
+}
+if(dif<0){
+  print("The result estimated total number of steps per day will decrease")
+}
+if(dif==0){
+  print("The result estimated total number of steps has no change")
+}
+
+```
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+dtimp[(wday(date)==1)|(wday(date)==7),weekend:="weekend"]
+dtimp[!(wday(date)==1)|(wday(date)==7),weekend:="weekday"]
+dtimpsumbyinterval<-dtimp[,.(mean=mean(steps)),by=c("interval","weekend")]
+qplot(x=interval,y=mean,data=dtimpsumbyinterval,facets = (weekend~.),geom="line")
+```
+
+
